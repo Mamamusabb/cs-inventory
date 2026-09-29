@@ -51,6 +51,15 @@ export default function Home() {
           </button>
         </form>
 
+        <div className="mt-4">
+          <a 
+            href="/scan" 
+            className="inline-block bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-xl shadow transition-colors"
+          >
+            📷 เปิดกล้องสแกน QR Code
+          </a>
+        </div>
+
       </div>
     </div>
   );
