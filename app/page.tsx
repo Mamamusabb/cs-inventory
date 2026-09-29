@@ -21,7 +21,7 @@ export default function Home() {
         
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-800 mb-2">💻 ระบบจัดการทรัพย์สิน</h1>
-          <p className="text-gray-500 text-sm">สโมสรนักศึกษา ภาควิทยาการคอมพิวเตอร์</p>
+          <p className="text-gray-500 text-sm">กิจกรรมนักศึกษา ภาควิทยาการคอมพิวเตอร์</p>
         </div>
 
         <div className="bg-blue-50 text-blue-800 p-4 rounded-lg mb-6 text-sm">
