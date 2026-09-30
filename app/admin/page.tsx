@@ -44,25 +44,50 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    fetchAssets();
-  }, []);
+    async function checkAdminAndFetch() {
+      // 1. เช็คว่าล็อกอินหรือยัง
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        alert('❌ กรุณาเข้าสู่ระบบก่อนใช้งานหน้าแอดมิน');
+        router.push('/');
+        return;
+      }
 
-  // ฟังก์ชันเพิ่มอุปกรณ์ใหม่
-  const handleAddAsset = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.asset_id || !formData.item_name) {
-      alert('กรุณากรอกรหัส Asset ID และชื่ออุปกรณ์');
-      return;
+      // 2. เช็คว่าอีเมลนี้อยู่ในตาราง admin_users จริงไหม
+      const { data: adminData, error } = await supabase
+        .from('admin_users')
+        .select('*')
+        .eq('email', session.user.email)
+        .maybeSingle();
+
+      if (error || !adminData) {
+        alert('❌ คุณไม่มีสิทธิ์เข้าถึงหน้าผู้ดูแลระบบ');
+        router.push('/');
+        return;
+      }
+
+      // ถ้าผ่านทั้ง 2 ข้อ ให้โหลดข้อมูลพัสดุตามปกติ
+      fetchAssets();
     }
 
+    checkAdminAndFetch();
+  }, [router]);
+
+  // ฟังก์ชันเพิ่มอุปกรณ์ใหม่เข้าคลัง
+  const handleAddAsset = async (e: React.FormEvent) => {
+    e.preventDefault();
     setSubmitting(true);
-    const { error } = await supabase.from('assets').insert([formData]);
+
+    const { error } = await supabase
+      .from('assets')
+      .insert([formData]);
 
     if (error) {
       console.error('Error adding asset:', error);
-      alert('เกิดข้อผิดพลาดในการเพิ่มอุปกรณ์ (รหัส Asset ID อาจซ้ำ)');
+      alert('❌ เกิดข้อผิดพลาดในการเพิ่มอุปกรณ์: ' + error.message);
     } else {
-      alert('เพิ่มอุปกรณ์เข้าคลังสำเร็จ!');
+      alert('✅ เพิ่มอุปกรณ์ใหม่สำเร็จ!');
       setFormData({
         asset_id: '',
         item_name: '',
@@ -75,6 +100,7 @@ export default function AdminPage() {
       });
       fetchAssets();
     }
+
     setSubmitting(false);
   };
 
@@ -89,10 +115,10 @@ export default function AdminPage() {
 
     if (error) {
       console.error('Error deleting asset:', error);
-      alert('เกิดข้อผิดพลาดในการลบอุปกรณ์');
+      alert('❌ เกิดข้อผิดพลาดในการลบอุปกรณ์ (อาจติดสิทธิ์ RLS หรือมีประวัติใช้งานอยู่)');
     } else {
-      alert('ลบอุปกรณ์เรียบร้อยแล้ว');
-      fetchAssets();
+      alert('🗑️ ลบอุปกรณ์สำเร็จ!');
+      fetchAssets(); 
     }
   };
 
@@ -107,10 +133,10 @@ export default function AdminPage() {
             <h1 className="text-2xl font-bold text-slate-900">จัดการคลังพัสดุสโมสร</h1>
           </div>
           <button
-            onClick={() => router.push('/scan')}
+            onClick={() => router.push('/')}
             className="bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold py-2.5 px-4 rounded-xl transition-all shadow-md"
           >
-            ← กลับไปหน้าสแกน QR Code
+            ← กลับไปหน้าแรก / สแกน QR Code
           </button>
         </div>
 
