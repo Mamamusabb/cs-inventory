@@ -14,6 +14,10 @@ export default function AdminPage() {
   const [assets, setAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  
+  // สถานะควบคุมการแสดงผลสิทธิ์แอดมิน
+  const [authChecking, setAuthChecking] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
 
   // ฟอร์มสำหรับเพิ่มอุปกรณ์ใหม่
   const [formData, setFormData] = useState({
@@ -45,12 +49,14 @@ export default function AdminPage() {
 
   useEffect(() => {
     async function checkAdminAndFetch() {
+      setAuthChecking(true);
+      
       // 1. เช็คว่าล็อกอินหรือยัง
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
-        alert('❌ กรุณาเข้าสู่ระบบก่อนใช้งานหน้าแอดมิน');
-        router.push('/');
+        setIsAuthorized(false);
+        setAuthChecking(false);
         return;
       }
 
@@ -62,17 +68,19 @@ export default function AdminPage() {
         .maybeSingle();
 
       if (error || !adminData) {
-        alert('❌ คุณไม่มีสิทธิ์เข้าถึงหน้าผู้ดูแลระบบ');
-        router.push('/');
+        setIsAuthorized(false);
+        setAuthChecking(false);
         return;
       }
 
-      // ถ้าผ่านทั้ง 2 ข้อ ให้โหลดข้อมูลพัสดุตามปกติ
+      // ถ้าผ่านทั้ง 2 ข้อ อนุญาตให้เข้าใช้งาน
+      setIsAuthorized(true);
+      setAuthChecking(false);
       fetchAssets();
     }
 
     checkAdminAndFetch();
-  }, [router]);
+  }, []);
 
   // ฟังก์ชันเพิ่มอุปกรณ์ใหม่เข้าคลัง
   const handleAddAsset = async (e: React.FormEvent) => {
@@ -122,6 +130,41 @@ export default function AdminPage() {
     }
   };
 
+  // 1. กำลังเช็คสิทธิ์ (แสดงหน้าโหลด)
+  if (authChecking) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans text-xs text-slate-500">
+        กำลังตรวจสอบสิทธิ์การเข้าใช้งาน...
+      </div>
+    );
+  }
+
+  // 2. ถ้าตรวจสอบแล้ว "ไม่มีสิทธิ์" ให้แสดงหน้า UI สวยๆ แจ้งเตือนทันที
+  if (!isAuthorized) {
+    return (
+      <main className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans text-slate-800">
+        <div className="bg-white w-full max-w-md rounded-3xl shadow-lg border border-slate-200 p-8 text-center space-y-6">
+          <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto text-2xl font-bold shadow-inner">
+            ⛔
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-xl font-extrabold text-slate-900">ไม่มีสิทธิ์เข้าใช้งาน</h1>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              บัญชี Google ของคุณไม่ได้รับอนุญาตให้เข้าถึงหน้าจัดการระบบผู้ดูแลระบบ (Admin Portal) กรุณาใช้บัญชีแอดมินที่ถูกต้อง
+            </p>
+          </div>
+          <button
+            onClick={() => router.push('/')}
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold py-3 px-4 rounded-xl text-xs transition-all shadow-md"
+          >
+            ← กลับสู่หน้าหลัก
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  // 3. ถ้ามีสิทธิ์ แสดงหน้า Admin ปกติ
   return (
     <div className="min-h-screen bg-slate-100 p-6 font-sans text-slate-800">
       <div className="max-w-6xl mx-auto space-y-6">
