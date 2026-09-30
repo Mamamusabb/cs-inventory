@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
+import { useParams, useRouter } from 'next/navigation';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,25 +12,22 @@ const supabase = createClient(
 export default function AssetDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const assetId = params.id as string;
+  const assetId = params?.id as string;
 
   const [assetData, setAssetData] = useState<any>(null);
-  const [isBorrowed, setIsBorrowed] = useState<boolean>(false);
-  const [activeBorrowLog, setActiveBorrowLog] = useState<any>(null);
   const [loadingAsset, setLoadingAsset] = useState(true);
+  const [isBorrowed, setIsBorrowed] = useState(false);
+  const [activeBorrowLog, setActiveBorrowLog] = useState<any>(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [modalInfo, setModalInfo] = useState<{ show: boolean; title: string; desc: string }>({
-    show: false,
-    title: '',
-    desc: '',
-  });
+  
+  // สถานะสำหรับเปิด/ปิด Modal แจ้งเตือนสำเร็จ หรือ UI บังคับ Login
+  const [modalInfo, setModalInfo] = useState({ show: false, title: '', desc: '' });
+  const [showLoginModal, setShowLoginModal] = useState(false); // UI สำหรับบังคับกด Login
 
   useEffect(() => {
     async function fetchAssetDetails() {
+      if (!assetId) return;
       setLoadingAsset(true);
-
-      // 🔍 เช็คดูว่ารหัส assetId ที่ส่งเข้ามาหน้าเว็บคืออะไร
-      console.log("กำลังค้นหารหัสพัสดุ (Asset ID):", assetId);
 
       // 1. ดึงข้อมูลนิ่งของพัสดุจากตาราง assets
       const { data: assetInfo } = await supabase
@@ -53,16 +50,13 @@ export default function AssetDetailPage() {
         });
       }
 
-      // 2. ตรวจสอบสถานะจาก borrow_logs (พร้อมปริ้นผลลัพธ์ออก Console)
-      const { data: logData, error: logError } = await supabase
+      // 2. ตรวจสอบสถานะจาก borrow_logs
+      const { data: logData } = await supabase
         .from('borrow_logs')
         .select('*')
         .eq('asset_id', assetId)
         .order('borrowed_at', { ascending: false })
         .limit(1);
-
-      console.log("ผลลัพธ์จากตาราง borrow_logs:", logData);
-      console.log("Error (ถ้ามี):", logError);
 
       if (logData && logData.length > 0) {
         const latestLog = logData[0];
@@ -81,30 +75,27 @@ export default function AssetDetailPage() {
       setLoadingAsset(false);
     }
 
-    if (assetId) {
-      fetchAssetDetails();
-    }
+    fetchAssetDetails();
   }, [assetId]);
 
+  // ฟังก์ชันกดปุ่ม ยืม / คืน
   const handleActionClick = async () => {
     setActionLoading(true);
 
+    // เช็คว่าผู้ใช้ล็อกอินหรือยัง
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session) {
-      await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.href,
-        },
-      });
+      // ถ้ายังไม่ล็อกอิน ให้เปิด UI Modal บังคับล็อกอินแทนการเด้งออกทันที
+      setActionLoading(false);
+      setShowLoginModal(true);
       return;
     }
 
     const user = session.user;
 
     if (!isBorrowed) {
-      // --- ก่อนทำเรื่องยืม: เช็คอีกรอบให้ชัวร์ว่า ตอนนี้มีใครยืมไปแล้วหรือยัง ---
+      // --- เช็คซ้ำกันอีกรอบเพื่อความชัวร์ ---
       const { data: latestCheck } = await supabase
         .from('borrow_logs')
         .select('*')
@@ -120,7 +111,7 @@ export default function AssetDetailPage() {
         return;
       }
 
-      // --- ถ้ายังไม่มีใครยืม ค่อยบันทึกการยืมใหม่ ---
+      // --- บันทึกการยืมใหม่ ---
       const { error } = await supabase.from('borrow_logs').insert([
         {
           asset_id: assetId,
@@ -144,15 +135,16 @@ export default function AssetDetailPage() {
       }
     } else {
       // --- คืนอุปกรณ์ ---
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('borrow_logs')
         .update({ status: 'RETURNED' })
         .eq('asset_id', assetId)
-        .eq('status', 'BORROWED');
+        .eq('status', 'BORROWED')
+        .select();
 
-      if (error) {
+      if (error || !data || data.length === 0) {
         console.error('Error returning:', error);
-        alert('เกิดข้อผิดพลาดในการบันทึกข้อมูลการคืน');
+        alert('❌ เกิดข้อผิดพลาดในการบันทึกข้อมูลการคืน');
       } else {
         setModalInfo({
           show: true,
@@ -167,128 +159,189 @@ export default function AssetDetailPage() {
     setActionLoading(false);
   };
 
+  // ฟังก์ชันกดปุ่ม Login ด้วย Google จาก Modal
+  const handleGoogleLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.href,
+      },
+    });
+  };
+
   if (loadingAsset) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center text-slate-500 text-sm">
-        กำลังโหลดข้อมูลอุปกรณ์...
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans text-xs text-slate-500">
+        กำลังโหลดข้อมูลพัสดุ...
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4 font-sans text-slate-800 relative">
+    <main className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4 font-sans text-slate-800">
       
-      <div className="mb-4 text-center">
-        <span className="text-xs font-medium text-slate-600">💻 CS Student Org. Inventory</span>
+      {/* ส่วนหัวแบรนด์ */}
+      <div className="text-center mb-6">
+        <span className="text-xs font-semibold text-slate-500 flex items-center justify-center gap-1.5">
+          💻 CS Student Org. Inventory
+        </span>
       </div>
 
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200">
+      {/* การ์ดแสดงข้อมูลพัสดุ */}
+      <div className="bg-white w-full max-w-md rounded-3xl shadow-lg border border-slate-200 p-8 space-y-6 relative overflow-hidden">
         
-        <div className="bg-blue-600 text-white p-6 text-center">
-          <p className="text-xs font-medium text-blue-200 tracking-wider mb-1">Asset ID</p>
-          <h1 className="text-lg font-mono font-bold tracking-tight">{assetId}</h1>
+        <div className="text-center bg-blue-600 text-white py-4 px-4 rounded-2xl shadow-inner">
+          <p className="text-[11px] font-medium uppercase tracking-wider opacity-80">Asset ID</p>
+          <h2 className="text-sm font-mono font-bold tracking-wide mt-0.5">{assetId}</h2>
         </div>
 
-        <div className="p-6 space-y-5">
-          
+        <div className="space-y-4">
           <div>
-            <p className="text-xs text-slate-400 mb-1">ชื่ออุปกรณ์ (Item Name)</p>
-            <h2 className="text-xl font-bold text-slate-900">{assetData?.item_name || '-'}</h2>
+            <p className="text-[11px] font-medium text-slate-400 uppercase">ชื่ออุปกรณ์ (Item Name)</p>
+            <h1 className="text-xl font-extrabold text-slate-900 mt-0.5">{assetData?.item_name}</h1>
           </div>
 
           <div>
-            <p className="text-xs text-slate-400 mb-1.5">สถานะปัจจุบัน (Status)</p>
-            <div>
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                !isBorrowed 
-                  ? 'bg-emerald-100 text-emerald-700' 
-                  : 'bg-amber-100 text-amber-700'
-              }`}>
-                <span className={`w-2 h-2 rounded-full ${!isBorrowed ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
-                {!isBorrowed ? 'AVAILABLE (พร้อมใช้งาน)' : 'BORROWED (ถูกยืมอยู่)'}
-              </span>
+            <p className="text-[11px] font-medium text-slate-400 uppercase">สถานะปัจจุบัน (Status)</p>
+            <div className="mt-1 flex items-center gap-2">
+              {isBorrowed ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                  BORROWED (ถูกยืมอยู่)
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  AVAILABLE (พร้อมใช้งาน)
+                </span>
+              )}
             </div>
-            {activeBorrowLog && (
-              <p className="text-[11px] text-slate-500 mt-2">
+            {isBorrowed && activeBorrowLog && (
+              <p className="text-[11px] text-slate-500 mt-1.5">
                 ผู้ยืมล่าสุด: <span className="font-semibold text-slate-700">{activeBorrowLog.user_email}</span>
               </p>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
             <div>
-              <p className="text-xs text-slate-400 mb-0.5">หมวดหมู่ (Category)</p>
-              <p className="text-sm font-semibold text-slate-800">{assetData?.category || '-'}</p>
+              <p className="text-[11px] font-medium text-slate-400 uppercase">หมวดหมู่ (Category)</p>
+              <p className="text-xs font-bold text-slate-700 mt-0.5">{assetData?.category || '-'}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-400 mb-0.5">แบรนด์ / รุ่น</p>
-              <p className="text-sm font-semibold text-slate-800">
-                {assetData?.brand || '-'} / {assetData?.model || '-'}
+              <p className="text-[11px] font-medium text-slate-400 uppercase">แบรนด์ / รุ่น</p>
+              <p className="text-xs font-bold text-slate-700 mt-0.5">
+                {assetData?.brand || '-'} {assetData?.model ? `/ ${assetData.model}` : ''}
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-xs text-slate-400 mb-0.5">สถานที่จัดเก็บ</p>
-              <p className="text-sm font-semibold text-slate-800">{assetData?.location || '-'}</p>
+              <p className="text-[11px] font-medium text-slate-400 uppercase">สถานที่จัดเก็บ</p>
+              <p className="text-xs font-bold text-slate-700 mt-0.5">{assetData?.location || '-'}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-400 mb-0.5">สภาพ (Condition)</p>
-              <p className="text-sm font-semibold text-slate-800">{assetData?.condition || '-'}</p>
+              <p className="text-[11px] font-medium text-slate-400 uppercase">สภาพ (Condition)</p>
+              <p className="text-xs font-bold text-slate-700 mt-0.5">{assetData?.condition || 'GOOD'}</p>
             </div>
           </div>
 
           <div>
-            <p className="text-xs text-slate-400 mb-0.5">ผู้รับผิดชอบ (Responsible)</p>
-            <p className="text-sm font-semibold text-slate-800">{assetData?.responsible_person || '-'}</p>
+            <p className="text-[11px] font-medium text-slate-400 uppercase">ผู้รับผิดชอบ (Responsible)</p>
+            <p className="text-xs font-bold text-slate-700 mt-0.5">{assetData?.responsible_person || '-'}</p>
           </div>
-
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            <button
-              onClick={handleActionClick}
-              disabled={actionLoading}
-              className={`w-full font-semibold py-3 px-4 rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-1 text-white ${
-                !isBorrowed 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
-                  : 'bg-emerald-600 hover:bg-emerald-700'
-              }`}
-            >
-              {actionLoading ? 'กำลังดำเนินการ...' : !isBorrowed ? 'ทำเรื่องยืม (Borrow)' : 'คืนอุปกรณ์ (Return)'}
-            </button>
-            <button
-              onClick={() => alert('ฟังก์ชันแจ้งซ่อม')}
-              className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-semibold py-3 px-4 rounded-xl text-xs transition-all border border-red-100 flex items-center justify-center gap-1"
-            >
-              แจ้งซ่อม (Repair)
-            </button>
-          </div>
-
         </div>
+
+        {/* ปุ่มทำรายการ */}
+        <div className="pt-4 flex gap-3">
+          <button
+            onClick={handleActionClick}
+            disabled={actionLoading}
+            className={`flex-1 text-white font-semibold py-3 px-4 rounded-xl text-xs transition-all shadow-md ${
+              isBorrowed
+                ? 'bg-emerald-600 hover:bg-emerald-700'
+                : 'bg-blue-600 hover:bg-blue-700'
+            }`}
+          >
+            {actionLoading ? 'กำลังดำเนินการ...' : isBorrowed ? 'คืนอุปกรณ์ (Return)' : 'ยืมอุปกรณ์ (Borrow)'}
+          </button>
+          
+          <button
+            onClick={() => alert('ฟังก์ชันแจ้งซ่อมกำลังพัฒนา')}
+            className="bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold py-3 px-4 rounded-xl text-xs transition-all border border-rose-100"
+          >
+            แจ้งซ่อม (Repair)
+          </button>
+        </div>
+
+        <div className="text-center pt-2">
+          <button
+            onClick={() => router.push('/')}
+            className="text-xs text-slate-400 hover:text-slate-600 underline"
+          >
+            ← กลับไปหน้าค้นหาหน้าแรก
+          </button>
+        </div>
+
       </div>
 
-      {modalInfo.show && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl border border-slate-100">
-            <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path>
-              </svg>
+      {/* 🛑 UI Modal สำหรับบังคับ Login (โผล่ขึ้นมาเฉพาะตอนยังไม่ล็อกอินแล้วกดปุ่มยืม) */}
+      {showLoginModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto text-xl font-bold">
+              🔐
             </div>
-            
-            <h3 className="text-lg font-bold text-slate-900 mb-1">{modalInfo.title}</h3>
-            <p className="text-xs text-slate-500 mb-6">{modalInfo.desc}</p>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">กรุณายืนยันตัวตนก่อนยืมอุปกรณ์</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                เพื่อความปลอดภัยและเก็บบันทึกประวัติการใช้งานของสโมสร โปรดเข้าสู่ระบบด้วยบัญชี Google
+              </p>
+            </div>
 
+            <div className="space-y-2 pt-2">
+              <button
+                onClick={handleGoogleLogin}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-2"
+              >
+                <span>เข้าสู่ระบบด้วย Google</span>
+              </button>
+              <button
+                onClick={() => setShowLoginModal(false)}
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-2.5 px-4 rounded-xl text-xs transition-all"
+              >
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🎉 Modal แจ้งเตือนทำรายการสำเร็จ */}
+      {modalInfo.show && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto text-xl font-bold">
+              ✓
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">{modalInfo.title}</h3>
+              <p className="text-xs text-slate-500 mt-1">{modalInfo.desc}</p>
+            </div>
             <button
-              onClick={() => router.push('/scan')}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl text-xs transition-all shadow-md"
+              onClick={() => {
+                setModalInfo({ show: false, title: '', desc: '' });
+                window.location.reload(); // รีเฟรชหน้าเพื่ออัปเดตสถานะปุ่ม
+              }}
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold py-3 px-4 rounded-xl text-xs transition-all shadow-md"
             >
-              สแกนอุปกรณ์ชิ้นถัดไป
+              ตกลง
             </button>
           </div>
         </div>
       )}
 
-    </div>
+    </main>
   );
 }

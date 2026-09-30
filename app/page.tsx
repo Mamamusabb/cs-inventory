@@ -40,9 +40,8 @@ export default function Home() {
             placeholder="เช่น PRES-CS-SCI-26-TOOL-0001"
             value={assetId}
             onChange={(e) => setAssetId(e.target.value)}
+            className="w-full px-4 py-3.5 rounded-xl border-2 border-slate-300 focus:border-blue-600 focus:outline-none text-slate-800 font-medium placeholder:text-slate-400 text-sm shadow-sm transition-all"
             autoComplete="off"
-            suppressHydrationWarning
-            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus..."
           />
           <button
             type="submit"
