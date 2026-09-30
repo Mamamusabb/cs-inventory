@@ -20,16 +20,35 @@ export default function AssetDetailPage() {
   const [activeBorrowLog, setActiveBorrowLog] = useState<any>(null);
   const [actionLoading, setActionLoading] = useState(false);
   
-  // สถานะสำหรับเปิด/ปิด Modal แจ้งเตือนสำเร็จ หรือ UI บังคับ Login
+  const [currentUser, setCurrentUser] = useState<any>(null); // เก็บข้อมูล user ปัจจุบันที่ล็อกอิน
+  const [isAdmin, setIsAdmin] = useState(false); // เช็คว่าเป็น admin หรือไม่
+
   const [modalInfo, setModalInfo] = useState({ show: false, title: '', desc: '' });
-  const [showLoginModal, setShowLoginModal] = useState(false); // UI สำหรับบังคับกด Login
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   useEffect(() => {
-    async function fetchAssetDetails() {
+    async function fetchAssetDetailsAndUser() {
       if (!assetId) return;
       setLoadingAsset(true);
 
-      // 1. ดึงข้อมูลนิ่งของพัสดุจากตาราง assets
+      // 1. ตรวจสอบ Session และสิทธิ์ User ปัจจุบัน
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setCurrentUser(session.user);
+
+        // เช็คว่า user คนนี้เป็น Admin หรือไม่จากตาราง admin_users
+        const { data: adminRecord } = await supabase
+          .from('admin_users')
+          .select('*')
+          .eq('email', session.user.email)
+          .maybeSingle();
+
+        if (adminRecord) {
+          setIsAdmin(true);
+        }
+      }
+
+      // 2. ดึงข้อมูลพัสดุจากตาราง assets
       const { data: assetInfo } = await supabase
         .from('assets')
         .select('*')
@@ -50,7 +69,7 @@ export default function AssetDetailPage() {
         });
       }
 
-      // 2. ตรวจสอบสถานะจาก borrow_logs
+      // 3. ตรวจสอบสถานะจาก borrow_logs ล่าสุด
       const { data: logData } = await supabase
         .from('borrow_logs')
         .select('*')
@@ -75,18 +94,16 @@ export default function AssetDetailPage() {
       setLoadingAsset(false);
     }
 
-    fetchAssetDetails();
+    fetchAssetDetailsAndUser();
   }, [assetId]);
 
   // ฟังก์ชันกดปุ่ม ยืม / คืน
   const handleActionClick = async () => {
     setActionLoading(true);
 
-    // เช็คว่าผู้ใช้ล็อกอินหรือยัง
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session) {
-      // ถ้ายังไม่ล็อกอิน ให้เปิด UI Modal บังคับล็อกอินแทนการเด้งออกทันที
       setActionLoading(false);
       setShowLoginModal(true);
       return;
@@ -95,7 +112,7 @@ export default function AssetDetailPage() {
     const user = session.user;
 
     if (!isBorrowed) {
-      // --- เช็คซ้ำกันอีกรอบเพื่อความชัวร์ ---
+      // --- กรณีทำเรื่องยืม ---
       const { data: latestCheck } = await supabase
         .from('borrow_logs')
         .select('*')
@@ -111,7 +128,6 @@ export default function AssetDetailPage() {
         return;
       }
 
-      // --- บันทึกการยืมใหม่ ---
       const { error } = await supabase.from('borrow_logs').insert([
         {
           asset_id: assetId,
@@ -134,7 +150,15 @@ export default function AssetDetailPage() {
         setIsBorrowed(true);
       }
     } else {
-      // --- คืนอุปกรณ์ ---
+      // --- กรณีคืนอุปกรณ์ (ตรวจสอบสิทธิ์: ต้องเป็นคนยืมเอง หรือ เป็น Admin เท่านั้น) ---
+      const isOwner = activeBorrowLog && activeBorrowLog.user_email === user.email;
+
+      if (!isOwner && !isAdmin) {
+        alert('❌ คุณไม่มีสิทธิ์คืนอุปกรณ์ชิ้นนี้ เนื่องจากไม่ใช่ผู้ที่ทำรายการยืม (เฉพาะผู้ยืมหรือแอดมินเท่านั้น)');
+        setActionLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('borrow_logs')
         .update({ status: 'RETURNED' })
@@ -159,7 +183,6 @@ export default function AssetDetailPage() {
     setActionLoading(false);
   };
 
-  // ฟังก์ชันกดปุ่ม Login ด้วย Google จาก Modal
   const handleGoogleLogin = async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -177,17 +200,18 @@ export default function AssetDetailPage() {
     );
   }
 
+  // เช็คว่า user ปัจจุบันเป็นเจ้าของของที่ยืมอยู่ไหม
+  const isOwner = currentUser && activeBorrowLog && activeBorrowLog.user_email === currentUser.email;
+
   return (
     <main className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4 font-sans text-slate-800">
       
-      {/* ส่วนหัวแบรนด์ */}
       <div className="text-center mb-6">
         <span className="text-xs font-semibold text-slate-500 flex items-center justify-center gap-1.5">
           💻 CS Student Org. Inventory
         </span>
       </div>
 
-      {/* การ์ดแสดงข้อมูลพัสดุ */}
       <div className="bg-white w-full max-w-md rounded-3xl shadow-lg border border-slate-200 p-8 space-y-6 relative overflow-hidden">
         
         <div className="text-center bg-blue-600 text-white py-4 px-4 rounded-2xl shadow-inner">
@@ -216,10 +240,15 @@ export default function AssetDetailPage() {
                 </span>
               )}
             </div>
+            
+            {/* แสดงชื่อผู้ยืมให้ชัดเจนตรงนี้ */}
             {isBorrowed && activeBorrowLog && (
-              <p className="text-[11px] text-slate-500 mt-1.5">
-                ผู้ยืมล่าสุด: <span className="font-semibold text-slate-700">{activeBorrowLog.user_email}</span>
-              </p>
+              <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
+                <p className="font-bold flex items-center gap-1">⚠️️ อุปกรณ์นี้ถูกยืมไปแล้ว</p>
+                <p className="mt-0.5 text-amber-700">
+                  ผู้ยืม: <span className="font-semibold">{activeBorrowLog.user_name || activeBorrowLog.user_email}</span>
+                </p>
+              </div>
             )}
           </div>
 
@@ -255,23 +284,30 @@ export default function AssetDetailPage() {
 
         {/* ปุ่มทำรายการ */}
         <div className="pt-4 flex gap-3">
-          <button
-            onClick={handleActionClick}
-            disabled={actionLoading}
-            className={`flex-1 text-white font-semibold py-3 px-4 rounded-xl text-xs transition-all shadow-md ${
-              isBorrowed
-                ? 'bg-emerald-600 hover:bg-emerald-700'
-                : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-          >
-            {actionLoading ? 'กำลังดำเนินการ...' : isBorrowed ? 'คืนอุปกรณ์ (Return)' : 'ยืมอุปกรณ์ (Borrow)'}
-          </button>
+          {/* เงื่อนไขแสดงปุ่ม: ถ้าถูกยืมอยู่ และผู้ใช้ปัจจุบันไม่ใช่เจ้าของ (และไม่ใช่แอดมิน) ให้แสดงปุ่มถูกยืมและปิดการกด */}
+          {isBorrowed && !isOwner && !isAdmin ? (
+            <div className="w-full bg-slate-100 text-slate-400 font-semibold py-3 px-4 rounded-xl text-xs text-center border border-slate-200 cursor-not-allowed">
+              🔒 ถูกยืมโดยผู้อื่นแล้ว (ไม่สามารถทำรายการได้)
+            </div>
+          ) : (
+            <button
+              onClick={handleActionClick}
+              disabled={actionLoading}
+              className={`flex-1 text-white font-semibold py-3 px-4 rounded-xl text-xs transition-all shadow-md ${
+                isBorrowed
+                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                  : 'bg-blue-600 hover:bg-blue-700'
+              }`}
+            >
+              {actionLoading ? 'กำลังดำเนินการ...' : isBorrowed ? 'คืนอุปกรณ์ (Return)' : 'ยืมอุปกรณ์ (Borrow)'}
+            </button>
+          )}
           
           <button
             onClick={() => alert('ฟังก์ชันแจ้งซ่อมกำลังพัฒนา')}
             className="bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold py-3 px-4 rounded-xl text-xs transition-all border border-rose-100"
           >
-            แจ้งซ่อม (Repair)
+            แจ้งซ่อม
           </button>
         </div>
 
@@ -286,7 +322,7 @@ export default function AssetDetailPage() {
 
       </div>
 
-      {/* 🛑 UI Modal สำหรับบังคับ Login (โผล่ขึ้นมาเฉพาะตอนยังไม่ล็อกอินแล้วกดปุ่มยืม) */}
+      {/* Modal บังคับ Login */}
       {showLoginModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center space-y-4">
@@ -296,7 +332,7 @@ export default function AssetDetailPage() {
             <div>
               <h3 className="text-base font-bold text-slate-900">กรุณายืนยันตัวตนก่อนยืมอุปกรณ์</h3>
               <p className="text-xs text-slate-500 mt-1">
-                เพื่อความปลอดภัยและเก็บบันทึกประวัติการใช้งานของสโมสร โปรดเข้าสู่ระบบด้วยบัญชี Google
+                โปรดเข้าสู่ระบบด้วยบัญชี Google เพื่อบันทึกประวัติการยืม-คืน
               </p>
             </div>
 
@@ -318,7 +354,7 @@ export default function AssetDetailPage() {
         </div>
       )}
 
-      {/* 🎉 Modal แจ้งเตือนทำรายการสำเร็จ */}
+      {/* Modal แจ้งเตือนสำเร็จ */}
       {modalInfo.show && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center space-y-4">
@@ -332,7 +368,7 @@ export default function AssetDetailPage() {
             <button
               onClick={() => {
                 setModalInfo({ show: false, title: '', desc: '' });
-                window.location.reload(); // รีเฟรชหน้าเพื่ออัปเดตสถานะปุ่ม
+                window.location.reload();
               }}
               className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold py-3 px-4 rounded-xl text-xs transition-all shadow-md"
             >
