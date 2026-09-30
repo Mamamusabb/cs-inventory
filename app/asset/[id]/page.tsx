@@ -104,7 +104,23 @@ export default function AssetDetailPage() {
     const user = session.user;
 
     if (!isBorrowed) {
-      // --- ทำเรื่องยืม: เพิ่มข้อมูลใหม่ลง borrow_logs ---
+      // --- ก่อนทำเรื่องยืม: เช็คอีกรอบให้ชัวร์ว่า ตอนนี้มีใครยืมไปแล้วหรือยัง ---
+      const { data: latestCheck } = await supabase
+        .from('borrow_logs')
+        .select('*')
+        .eq('asset_id', assetId)
+        .order('borrowed_at', { ascending: false })
+        .limit(1);
+
+      if (latestCheck && latestCheck.length > 0 && latestCheck[0].status.trim().toUpperCase() === 'BORROWED') {
+        alert('❌ อุปกรณ์ชิ้นนี้ถูกยืมไปแล้วโดยผู้อื่น ไม่สามารถยืมซ้ำได้');
+        setIsBorrowed(true);
+        setActiveBorrowLog(latestCheck[0]);
+        setActionLoading(false);
+        return;
+      }
+
+      // --- ถ้ายังไม่มีใครยืม ค่อยบันทึกการยืมใหม่ ---
       const { error } = await supabase.from('borrow_logs').insert([
         {
           asset_id: assetId,
@@ -127,7 +143,7 @@ export default function AssetDetailPage() {
         setIsBorrowed(true);
       }
     } else {
-      // --- คืนอุปกรณ์: อัปเดตสถานะรายการที่ค้างอยู่ให้เป็น RETURNED ---
+      // --- คืนอุปกรณ์ ---
       const { error } = await supabase
         .from('borrow_logs')
         .update({ status: 'RETURNED' })
