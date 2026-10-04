@@ -5,6 +5,7 @@ export async function POST(request: Request) {
   try {
     const resendApiKey = process.env.RESEND_API_KEY;
 
+    // ตรวจสอบ API Key ด้านในฟังก์ชันเพื่อไม่ให้กระทบช่วง Build บน Vercel
     if (!resendApiKey) {
       return NextResponse.json({ error: 'Missing RESEND_API_KEY environment variable' }, { status: 500 });
     }
@@ -12,7 +13,7 @@ export async function POST(request: Request) {
     const resend = new Resend(resendApiKey);
     const { type, userName, userEmail, assetId, itemName, purpose } = await request.json();
 
-    const adminEmails = ['admin1@example.com', 'admin2@example.com']; // อีเมลของกลุ่มแอดมิน
+    const adminEmails = ['admin1@example.com', 'admin2@example.com'];
 
     let subject = '';
     let htmlContent = '';
