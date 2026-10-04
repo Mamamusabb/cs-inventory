@@ -22,7 +22,7 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
 
-  // Modal สแกน QR Code (ดีไซน์เดิมที่คุณต้องการ)
+  // Modal สแกน QR Code
   const [showScanner, setShowScanner] = useState(false);
   const [cameras, setCameras] = useState<any[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string>('');
@@ -183,7 +183,7 @@ export default function HomePage() {
   ];
 
   const getAssetStatus = (assetId: string, isMaintenance: boolean) => {
-    if (isMaintenance) return { code: 'MAINTENANCE', label: '🛠️️ ส่งซ่อม', color: 'bg-rose-100 text-rose-800' };
+    if (isMaintenance) return { code: 'MAINTENANCE', label: '🛠️ ส่งซ่อม', color: 'bg-rose-100 text-rose-800' };
 
     const activeLog = borrowLogs.find(
       (log) => log.asset_id === assetId && (log.status === 'BORROWED' || log.status === 'APPROVED' || log.status === 'PENDING')
@@ -210,6 +210,17 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 md:p-8 font-sans text-slate-800">
+      
+      {/* 🎨 CSS ล็อกสัดส่วนวิดีโอในกล้องให้อยู่ในกรอบพอดีเป๊ะ ไม่ล้น */}
+      <style jsx global>{`
+        #reader-view-home video {
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: cover !important;
+          border-radius: 1.5rem !important;
+        }
+      `}</style>
+
       <div className="max-w-6xl mx-auto space-y-6">
         
         {/* Header */}
@@ -331,7 +342,7 @@ export default function HomePage() {
                       
                       <div className="text-[11px] text-slate-500 space-y-0.5">
                         <p>📍 สถานที่: {item.location || '-'}</p>
-                        <p>🏷️️ หมวดหมู่: {item.category || '-'}</p>
+                        <p>🏷️ หมวดหมู่: {item.category || '-'}</p>
                       </div>
                     </div>
 
@@ -350,7 +361,7 @@ export default function HomePage() {
 
       </div>
 
-      {/* 📷 Modal สแกน QR Code ดีไซน์สไตล์ที่คุณต้องการเป๊ะๆ */}
+      {/* 📷 Modal สแกน QR Code ดีไซน์สไตล์เดิมที่คุณต้องการ */}
       {showScanner && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="max-w-md w-full bg-white p-6 rounded-[2.5rem] shadow-2xl border border-slate-200 text-center space-y-4">
