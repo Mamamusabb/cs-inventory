@@ -211,7 +211,7 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-slate-100 p-4 md:p-8 font-sans text-slate-800">
       
-      {/* 🎨 CSS ล็อกสัดส่วนวิดีโอในกล้องให้อยู่ในกรอบพอดีเป๊ะ ไม่ล้น */}
+      {/* 🎨 CSS ล็อกสัดส่วนวิดีโอในกล้องให้อยู่ในกรอบพอดีเป๊ะ */}
       <style jsx global>{`
         #reader-view-home video {
           width: 100% !important;
@@ -361,7 +361,7 @@ export default function HomePage() {
 
       </div>
 
-      {/* 📷 Modal สแกน QR Code ดีไซน์สไตล์เดิมที่คุณต้องการ */}
+      {/* 📷 Modal สแกน QR Code ดีไซน์คลีนๆ ไร้กรอบเขียวซ้อน */}
       {showScanner && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="max-w-md w-full bg-white p-6 rounded-[2.5rem] shadow-2xl border border-slate-200 text-center space-y-4">
@@ -380,16 +380,16 @@ export default function HomePage() {
 
             <p className="text-[11px] text-slate-400">หันกล้องไปที่ QR Code หรืออัปโหลดรูปภาพเพื่อดูข้อมูล</p>
 
-            {/* กล้องสแกนพร้อมกรอบเล็งเป้า */}
+            {/* กล้องสแกนพร้อมกรอบเล็งเป้าสีขาวสะอาดตา */}
             <div className="relative w-full h-64 bg-slate-900 rounded-3xl overflow-hidden shadow-inner flex items-center justify-center border-4 border-slate-100">
               <div id="reader-view-home" className="w-full h-full object-cover" />
               
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                 <div className="w-44 h-44 border-2 border-white/80 rounded-2xl relative shadow-2xl">
-                  <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-emerald-400 rounded-tl-xl" />
-                  <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-emerald-400 rounded-tr-xl" />
-                  <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-emerald-400 rounded-bl-xl" />
-                  <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-emerald-400 rounded-br-xl" />
+                  <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-white rounded-tl-xl" />
+                  <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-white rounded-tr-xl" />
+                  <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-white rounded-bl-xl" />
+                  <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-white rounded-br-xl" />
                 </div>
               </div>
             </div>
