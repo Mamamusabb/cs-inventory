@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,8 +22,13 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
 
-  // Modal สแกน QR Code
+  // Modal สแกน QR Code (ดีไซน์เดิมที่คุณต้องการ)
   const [showScanner, setShowScanner] = useState(false);
+  const [cameras, setCameras] = useState<any[]>([]);
+  const [selectedCamera, setSelectedCamera] = useState<string>('');
+  const [scannerInstance, setScannerInstance] = useState<Html5Qrcode | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // 🧹 ล้าง Hash URL (#access_token=...) ที่ติดมาจาก Google OAuth ออกทันที
@@ -72,40 +77,79 @@ export default function HomePage() {
     };
   }, []);
 
-  // 📷 กล้องสแกน QR Code พร้อมกรอบ UI สวยงาม + เลือกใช้กล้องหลังอัตโนมัติ
+  // 📷 โหลดรายชื่อกล้องเมื่อเปิด Modal สแกน
   useEffect(() => {
     if (!showScanner) return;
 
-    const timer = setTimeout(() => {
-      const scanner = new Html5QrcodeScanner(
-        'qr-reader',
-        { 
-          fps: 10, 
-          qrbox: { width: 220, height: 220 },
-          videoConstraints: { facingMode: { exact: 'environment' } } // บังคับสลับใช้กล้องหลัง
-        },
-        false
-      );
+    Html5Qrcode.getCameras().then((devices) => {
+      if (devices && devices.length > 0) {
+        setCameras(devices);
+        setSelectedCamera(devices[0].id);
+      }
+    }).catch(() => {
+      setErrorMsg('ไม่สามารถเข้าถึงกล้องได้');
+    });
 
-      scanner.render(
-        (decodedText) => {
-          scanner.clear();
+    return () => {
+      if (scannerInstance && scannerInstance.isScanning) {
+        scannerInstance.stop().catch(() => {});
+      }
+    };
+  }, [showScanner]);
+
+  // เริ่มต้นสแกนด้วยกล้องที่เลือก
+  useEffect(() => {
+    if (!showScanner || !selectedCamera) return;
+
+    const html5QrCode = new Html5Qrcode("reader-view-home");
+    setScannerInstance(html5QrCode);
+
+    html5QrCode.start(
+      selectedCamera,
+      {
+        fps: 10,
+        qrbox: { width: 220, height: 220 },
+      },
+      (decodedText) => {
+        html5QrCode.stop().then(() => {
           setShowScanner(false);
-          
           if (decodedText.startsWith('http')) {
             window.location.href = decodedText;
           } else {
             router.push(`/asset/${decodedText}`);
           }
-        },
-        () => {}
-      );
-    }, 100);
+        }).catch(() => {});
+      },
+      () => {}
+    ).catch(() => {
+      setErrorMsg('ไม่สามารถเปิดใช้งานกล้องนี้ได้');
+    });
 
     return () => {
-      clearTimeout(timer);
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().catch(() => {});
+      }
     };
-  }, [showScanner, router]);
+  }, [selectedCamera, showScanner, router]);
+
+  // ฟังก์ชันอัปโหลดรูป QR Code จากเครื่องใน Modal
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      const html5QrCode = new Html5Qrcode("reader-view-home");
+      try {
+        const decodedText = await html5QrCode.scanFile(file, true);
+        setShowScanner(false);
+        if (decodedText.startsWith('http')) {
+          window.location.href = decodedText;
+        } else {
+          router.push(`/asset/${decodedText}`);
+        }
+      } catch (err) {
+        alert('❌ ไม่พบ QR Code ในรูปภาพนี้ กรุณาลองใหม่อีกครั้ง');
+      }
+    }
+  };
 
   const handleLogin = async () => {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://cs-inventory-six.vercel.app';
@@ -139,7 +183,7 @@ export default function HomePage() {
   ];
 
   const getAssetStatus = (assetId: string, isMaintenance: boolean) => {
-    if (isMaintenance) return { code: 'MAINTENANCE', label: '🛠️ ส่งซ่อม', color: 'bg-rose-100 text-rose-800' };
+    if (isMaintenance) return { code: 'MAINTENANCE', label: '🛠️️ ส่งซ่อม', color: 'bg-rose-100 text-rose-800' };
 
     const activeLog = borrowLogs.find(
       (log) => log.asset_id === assetId && (log.status === 'BORROWED' || log.status === 'APPROVED' || log.status === 'PENDING')
@@ -166,42 +210,6 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 md:p-8 font-sans text-slate-800">
-      
-      {/* 🎨 CSS ครอบดีไซน์ HTML5 Scanner ให้มีกรอบเล็งสแกนสวยๆ + ปรับปุ่มให้โค้งมน */}
-      <style jsx global>{`
-        #qr-reader {
-          border: none !important;
-        }
-        #qr-reader__scan_region {
-          background: #0f172a !important;
-          border-radius: 20px !important;
-          overflow: hidden !important;
-        }
-        #qr-reader__scan_region video {
-          border-radius: 20px !important;
-          object-fit: cover !important;
-        }
-        #qr-reader__dashboard_section_csr button {
-          background-color: #2563eb !important;
-          color: white !important;
-          border: none !important;
-          padding: 10px 20px !important;
-          border-radius: 14px !important;
-          font-size: 12px !important;
-          font-weight: 600 !important;
-          cursor: pointer !important;
-          margin: 8px 0 !important;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-        }
-        #qr-reader__dashboard_section_csr button:hover {
-          background-color: #1d4ed8 !important;
-        }
-        #qr-reader__status_span {
-          font-size: 11px !important;
-          color: #64748b !important;
-        }
-      `}</style>
-
       <div className="max-w-6xl mx-auto space-y-6">
         
         {/* Header */}
@@ -342,25 +350,74 @@ export default function HomePage() {
 
       </div>
 
-      {/* Modal สแกน QR Code พร้อมกรอบเล็งสวยงาม */}
+      {/* 📷 Modal สแกน QR Code ดีไซน์สไตล์ที่คุณต้องการเป๊ะๆ */}
       {showScanner && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center space-y-4 border border-slate-100">
+          <div className="max-w-md w-full bg-white p-6 rounded-[2.5rem] shadow-2xl border border-slate-200 text-center space-y-4">
+            
             <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                <span>📷</span> สแกน QR Code พัสดุ
+              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                <span>🔲</span> สแกน QR Code อุปกรณ์
               </h3>
               <button
                 onClick={() => setShowScanner(false)}
-                className="text-slate-400 hover:text-slate-600 text-xs font-bold bg-slate-100 p-1 px-2.5 rounded-lg transition"
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold bg-slate-100 p-1 px-3 rounded-lg transition"
               >
                 ✕ ปิด
               </button>
             </div>
 
-            <div id="qr-reader" className="overflow-hidden rounded-2xl bg-slate-900" />
+            <p className="text-[11px] text-slate-400">หันกล้องไปที่ QR Code หรืออัปโหลดรูปภาพเพื่อดูข้อมูล</p>
 
-            <p className="text-[11px] text-slate-400">ส่องกล้องไปที่ QR Code เพื่อเปิดหน้าพัสดุโดยอัตโนมัติ</p>
+            {/* กล้องสแกนพร้อมกรอบเล็งเป้า */}
+            <div className="relative w-full h-64 bg-slate-900 rounded-3xl overflow-hidden shadow-inner flex items-center justify-center border-4 border-slate-100">
+              <div id="reader-view-home" className="w-full h-full object-cover" />
+              
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div className="w-44 h-44 border-2 border-white/80 rounded-2xl relative shadow-2xl">
+                  <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-emerald-400 rounded-tl-xl" />
+                  <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-emerald-400 rounded-tr-xl" />
+                  <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-emerald-400 rounded-bl-xl" />
+                  <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-emerald-400 rounded-br-xl" />
+                </div>
+              </div>
+            </div>
+
+            {errorMsg && <p className="text-xs text-rose-500 font-semibold">{errorMsg}</p>}
+
+            {/* เลือกกล้อง */}
+            {cameras.length > 1 && (
+              <div className="flex items-center justify-between bg-slate-50 p-2.5 px-3 rounded-2xl border text-xs">
+                <span className="font-semibold text-slate-500">📷 เลือกกล้อง:</span>
+                <select
+                  value={selectedCamera}
+                  onChange={(e) => setSelectedCamera(e.target.value)}
+                  className="bg-white border rounded-xl p-1 text-xs text-slate-700 focus:outline-none max-w-[180px]"
+                >
+                  {cameras.map((cam) => (
+                    <option key={cam.id} value={cam.id}>
+                      {cam.label || `กล้อง (${cam.id.slice(0, 5)}...)`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* ปุ่มอัปโหลดรูปภาพจากเครื่อง */}
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleFileUpload} 
+              accept="image/*" 
+              className="hidden" 
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold py-3 px-4 rounded-2xl border border-emerald-200 shadow-sm transition flex items-center justify-center gap-2 text-xs"
+            >
+              <span>🖼️</span> อัปโหลดรูปภาพ QR Code จากเครื่อง
+            </button>
+
           </div>
         </div>
       )}
