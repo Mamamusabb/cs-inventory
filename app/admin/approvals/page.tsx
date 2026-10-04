@@ -17,16 +17,16 @@ export default function AdminApprovalsPage() {
   const [authChecking, setAuthChecking] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [adminEmail, setAdminEmail] = useState('');
+  const [savedAdminSig, setSavedAdminSig] = useState<string | null>(null); // ลายเซ็นแอดมินที่เคยบันทึกไว้
 
   const [selectedLog, setSelectedLog] = useState<any>(null);
   const [adminSigMode, setAdminSigMode] = useState<'APPROVE' | 'RETURN'>('APPROVE');
   const [adminSigModal, setAdminSigModal] = useState(false);
   const adminSigRef = useRef<any>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [saveAsDefaultSig, setSaveAsDefaultSig] = useState(true); // ติ๊กจำลายเซ็น
 
   const [viewSlipLog, setViewSlipLog] = useState<any>(null);
-
-  // ตัวกรองรายงาน
   const [historySearch, setHistorySearch] = useState('');
 
   const fetchLogs = async () => {
@@ -56,12 +56,27 @@ export default function AdminApprovalsPage() {
         .maybeSingle();
 
       if (!adminRecord) { setIsAuthorized(false); setAuthChecking(false); return; }
+      
+      // ดึงลายเซ็นที่เคยบันทึกไว้ของแอดมินคนนี้
+      if (adminRecord.signature_url) {
+        setSavedAdminSig(adminRecord.signature_url);
+      }
+
       setIsAuthorized(true);
       setAuthChecking(false);
       fetchLogs();
     }
     checkAdmin();
   }, []);
+
+  // เมื่อเปิด Modal ให้โหลดลายเซ็นเดิมลง Canvas อัตโนมัติ
+  useEffect(() => {
+    if (adminSigModal && savedAdminSig && adminSigRef.current) {
+      setTimeout(() => {
+        adminSigRef.current?.fromDataURL(savedAdminSig);
+      }, 100);
+    }
+  }, [adminSigModal, savedAdminSig]);
 
   const handleAdminSignSubmit = async () => {
     if (!adminSigRef.current || adminSigRef.current.isEmpty()) {
@@ -71,6 +86,15 @@ export default function AdminApprovalsPage() {
 
     setActionLoading(true);
     const sigUrl = adminSigRef.current.getTrimmedCanvas().toDataURL('image/png');
+
+    // ถ้าติ๊ก "จำลายเซ็นนี้ไว้" ให้บันทึกลงตาราง admin_users
+    if (saveAsDefaultSig) {
+      await supabase
+        .from('admin_users')
+        .update({ signature_url: sigUrl })
+        .eq('email', adminEmail);
+      setSavedAdminSig(sigUrl);
+    }
 
     let updatePayload: any = {};
     if (adminSigMode === 'APPROVE') {
@@ -85,7 +109,7 @@ export default function AdminApprovalsPage() {
         status: 'RETURNED',
         request_status: 'RETURNED',
         admin_return_signature: sigUrl,
-        returned_at: new Date().toISOString(), // 🕒 บันทึกวันเวลาที่แอดมินเซ็นรับคืนพัสดุ
+        returned_at: new Date().toISOString(),
       };
     }
 
@@ -95,7 +119,8 @@ export default function AdminApprovalsPage() {
       .eq('id', selectedLog.id);
 
     if (error) {
-      alert('❌ เกิดข้อผิดพลาด');
+      console.error('Update Borrow Log Error:', error);
+      alert(`❌ เกิดข้อผิดพลาด: ${error.message || 'ไม่สามารถอัปเดตข้อมูลได้'}`);
     } else {
       alert('✅ บันทึกและลงลายเซ็นสำเร็จ!');
       setAdminSigModal(false);
@@ -112,7 +137,6 @@ export default function AdminApprovalsPage() {
   const returnReviewList = logs.filter(l => l.status === 'RETURNED' && !l.admin_return_signature);
   const activeBorrowedList = logs.filter(l => l.status === 'BORROWED' || l.status === 'APPROVED');
   
-  // รายการประวัติทั้งหมดที่ตรงกับคำค้นหา
   const filteredHistoryList = logs.filter(l => 
     l.user_name?.toLowerCase().includes(historySearch.toLowerCase()) ||
     l.asset_id?.toLowerCase().includes(historySearch.toLowerCase()) ||
@@ -176,7 +200,7 @@ export default function AdminApprovalsPage() {
         }
       `}</style>
 
-      {/* หน้าแดชบอร์ดหลักของแอดมิน */}
+      {/* Dashboard Main */}
       <div className="no-print max-w-6xl mx-auto space-y-6">
         
         {/* Header */}
@@ -188,7 +212,7 @@ export default function AdminApprovalsPage() {
           <button onClick={() => router.push('/')} className="bg-slate-800 text-white text-xs py-2.5 px-4 rounded-xl font-semibold">← กลับหน้าหลัก</button>
         </div>
 
-        {/* 📊 รายงานสถิติภาพรวม (Stat Cards) */}
+        {/* 📊 Stat Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-1">
             <p className="text-xs text-slate-400 font-semibold uppercase">คำขอยืมรออนุมัติ</p>
@@ -208,7 +232,7 @@ export default function AdminApprovalsPage() {
           </div>
         </div>
 
-        {/* 1. รายการรออนุมัติใบยืม */}
+        {/* 1. รายการรออนุมัติ */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
           <h2 className="text-lg font-bold text-slate-900">⏳ ใบยืมที่รอการตรวจสอบ ({pendingList.length})</h2>
           {pendingList.length === 0 ? (
@@ -230,7 +254,7 @@ export default function AdminApprovalsPage() {
           )}
         </div>
 
-        {/* 2. รายการรอรับคืนพัสดุ พร้อม Preview รูปภาพ */}
+        {/* 2. รายการรอรับคืน */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
           <h2 className="text-lg font-bold text-slate-900">📦 รายการส่งคืนพัสดุรอตรวจรับ ({returnReviewList.length})</h2>
           {returnReviewList.length === 0 ? (
@@ -243,13 +267,11 @@ export default function AdminApprovalsPage() {
                     <div>
                       <p className="font-bold text-slate-900 text-sm">ผู้คืน: {log.user_name}</p>
                       <p className="font-mono text-blue-600">พัสดุ: {log.asset_id} ({log.assets?.item_name})</p>
-                      {/* 🕒 แสดงเวลาส่งคืน */}
                       <p className="text-slate-500 font-mono text-[11px] mt-0.5">
                         🕒 เวลาส่งคืน: {log.returned_at ? new Date(log.returned_at).toLocaleString('th-TH') : new Date(log.borrowed_at).toLocaleString('th-TH')}
                       </p>
                     </div>
 
-                    {/* Preview รูปถ่าย */}
                     <div className="flex gap-3 pt-1">
                       <div className="text-center space-y-1">
                         <span className="text-[10px] text-slate-500 font-semibold block">ด้านหน้า</span>
@@ -282,7 +304,7 @@ export default function AdminApprovalsPage() {
           )}
         </div>
 
-        {/* 3. ประวัติและรายงานสัญญา A4 ทั้งหมด */}
+        {/* 3. รายงานประวัติสัญญา */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
             <h2 className="text-lg font-bold text-slate-900">📑 รายงานประวัติและเอกสารสัญญา A4</h2>
@@ -339,23 +361,43 @@ export default function AdminApprovalsPage() {
       {adminSigModal && selectedLog && (
         <div className="no-print fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-4 text-xs">
-            <h3 className="text-base font-bold text-slate-900">{adminSigMode === 'APPROVE' ? '✍️ ลงลายเซ็นอนุมัติใบยืม' : '✍️ ลงลายเซ็นรับทราบการคืน'}</h3>
+            <div className="flex justify-between items-center">
+              <h3 className="text-base font-bold text-slate-900">{adminSigMode === 'APPROVE' ? '✍️ ลงลายเซ็นอนุมัติใบยืม' : '✍️ ลงลายเซ็นรับทราบการคืน'}</h3>
+              {savedAdminSig && (
+                <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-1 rounded-lg">
+                  ✓ โหลดลายเซ็นเดิมให้แล้ว
+                </span>
+              )}
+            </div>
+
             <div>
               <label className="block font-semibold text-slate-600 mb-1">ลายเซ็นแอดมิน *</label>
               <div className="border rounded-2xl overflow-hidden bg-white">
                 <SignatureCanvas ref={adminSigRef} canvasProps={{ className: 'w-full h-32 cursor-crosshair' }} />
               </div>
-              <button type="button" onClick={() => adminSigRef.current?.clear()} className="text-[11px] text-rose-600 mt-1">🗑 ล้างลายเซ็น</button>
+              <div className="flex justify-between items-center mt-1.5">
+                <button type="button" onClick={() => adminSigRef.current?.clear()} className="text-[11px] text-rose-600">🗑 ล้างลายเซ็น</button>
+                <label className="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={saveAsDefaultSig} 
+                    onChange={(e) => setSaveAsDefaultSig(e.target.checked)} 
+                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>บันทึกเป็นลายเซ็นประจำตัว</span>
+                </label>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => setAdminSigModal(false)} className="flex-1 bg-slate-100 py-2.5 rounded-xl">ยกเลิก</button>
-              <button onClick={handleAdminSignSubmit} disabled={actionLoading} className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl font-semibold">✓ ยืนยันบันทึก</button>
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setAdminSigModal(false)} className="flex-1 bg-slate-100 hover:bg-slate-200 py-2.5 rounded-xl font-semibold">ยกเลิก</button>
+              <button onClick={handleAdminSignSubmit} disabled={actionLoading} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-semibold shadow">✓ ยืนยันบันทึก</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 📄 Modal แสดงและสั่งพิมพ์เอกสารสัญญา A4 (2 หน้า) */}
+      {/* 📄 Modal สัญญา A4 */}
       {viewSlipLog && (
         <div className="print-modal-backdrop fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-start p-6 z-50 overflow-y-auto no-scrollbar">
           
@@ -366,7 +408,7 @@ export default function AdminApprovalsPage() {
 
           <div className="print-document-container w-full max-w-[210mm] flex flex-col items-center space-y-8 print:space-y-0">
             
-            {/* หน้าที่ 1: ใบยืมครุภัณฑ์ */}
+            {/* หน้า 1 */}
             <div className="a4-page a4-page-break bg-white w-[210mm] min-h-[297mm] p-[15mm] shadow-2xl border border-slate-200 font-serif text-slate-900 relative flex flex-col justify-between box-border">
               <div className="space-y-6">
                 <div className="text-center space-y-1 border-b pb-4">
@@ -420,7 +462,7 @@ export default function AdminApprovalsPage() {
               </div>
             </div>
 
-            {/* หน้าที่ 2: ใบส่งคืนครุภัณฑ์ */}
+            {/* หน้า 2 */}
             <div className="a4-page bg-white w-[210mm] min-h-[297mm] p-[15mm] shadow-2xl border border-slate-200 font-serif text-slate-900 relative flex flex-col justify-between box-border">
               <div className="space-y-6">
                 <div className="text-center space-y-1 border-b pb-4">
@@ -428,7 +470,6 @@ export default function AdminApprovalsPage() {
                   <p className="text-xs text-slate-600 font-sans">งานประธานสาขา ภาควิชาวิทยาการคอมพิวเตอร์</p>
                 </div>
 
-                {/* 🕒 แสดงวันและเวลาส่งคืนในเอกสาร A4 หน้า 2 */}
                 <div className="text-right text-xs space-y-0.5 font-sans bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                   <p><b>วันเวลาที่ส่งคืน:</b> {viewSlipLog.returned_at ? new Date(viewSlipLog.returned_at).toLocaleString('th-TH') : 'ทำรายการคืนเรียบร้อย'}</p>
                 </div>
