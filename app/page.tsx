@@ -26,11 +26,9 @@ export default function HomePage() {
   const [showScanner, setShowScanner] = useState(false);
 
   useEffect(() => {
-    // 🧹 เคลียร์ URL Hash (#access_token=...) ทันทีที่โหลดหน้าแรกสำเร็จ
-    if (typeof window !== 'undefined' && window.location.hash) {
-      if (window.location.hash.includes('access_token') || window.location.hash.includes('error')) {
-        window.history.replaceState(null, '', window.location.pathname + window.location.search);
-      }
+    // 🧹 เคลียร์ Hash (#access_token=...) บน URL Bar ทันทีที่โหลดหน้าแรกสำเร็จ
+    if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
+      window.history.replaceState(null, '', window.location.pathname);
     }
 
     async function initData() {
@@ -64,8 +62,8 @@ export default function HomePage() {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       setCurrentUser(session?.user || null);
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        if (typeof window !== 'undefined' && window.location.hash) {
-          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
+          window.history.replaceState(null, '', window.location.pathname);
         }
       }
     });
@@ -96,7 +94,7 @@ export default function HomePage() {
           router.push(`/asset/${decodedText}`);
         }
       },
-      (error) => {}
+      () => {}
     );
 
     return () => {
@@ -105,10 +103,11 @@ export default function HomePage() {
   }, [showScanner, router]);
 
   const handleLogin = async () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://cs-inventory-six.vercel.app';
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: origin,
       },
     });
   };
@@ -118,6 +117,7 @@ export default function HomePage() {
     setCurrentUser(null);
   };
 
+  // 🏷️ หมวดหมู่พัสดุที่ตรงกับชนิดอุปกรณ์ในระบบ
   const categories = [
     { key: 'ALL', label: 'ทั้งหมด' },
     { key: 'AUDIO', label: 'AUDIO (เครื่องเสียง/ลำโพง)' },
@@ -164,7 +164,7 @@ export default function HomePage() {
     <main className="min-h-screen bg-slate-100 p-4 md:p-8 font-sans text-slate-800">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* Header */}
+        {/* 1. Header พร้อมปุ่ม Login / Logout */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-200 gap-4">
           <div>
             <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">สโมสรนักศึกษา คณะวิทยาศาสตร์</span>
@@ -190,7 +190,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* ค้นหาและตัวกรอง */}
+        {/* 2. 🔍 ค้นหา, ปุ่มสแกน QR Code, ตัวกรองหมวดหมู่ และตัวกรองสถานะ */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-5">
           <div className="flex gap-3">
             <div className="flex-1 relative">
@@ -210,6 +210,7 @@ export default function HomePage() {
             </button>
           </div>
 
+          {/* ตัวกรองหมวดหมู่ */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar text-xs">
             <span className="font-bold text-slate-400 text-[11px] mr-1 whitespace-nowrap">หมวดหมู่:</span>
             {categories.map((cat) => (
@@ -227,6 +228,7 @@ export default function HomePage() {
             ))}
           </div>
 
+          {/* ตัวกรองสถานะ */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar text-xs border-t pt-3">
             <span className="font-bold text-slate-400 text-[11px] mr-1 whitespace-nowrap">สถานะ:</span>
             {statuses.map((st) => (
@@ -245,7 +247,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* รายการพัสดุ */}
+        {/* 3. 📦 รายการพัสดุทั้งหมด */}
         <div className="space-y-3">
           <div className="flex justify-between items-center px-2">
             <h2 className="text-base font-bold text-slate-900">รายการอุปกรณ์พัสดุ ({filteredAssets.length})</h2>
@@ -300,7 +302,7 @@ export default function HomePage() {
 
       </div>
 
-      {/* Modal QR Code */}
+      {/* 📷 Modal กล้องสแกน QR Code */}
       {showScanner && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center space-y-4">
