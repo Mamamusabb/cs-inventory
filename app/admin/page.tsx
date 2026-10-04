@@ -15,11 +15,11 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   
-  // สถานะควบคุมการแสดงผลสิทธิ์แอดมิน
   const [authChecking, setAuthChecking] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
 
-  // ฟอร์มสำหรับเพิ่มอุปกรณ์ใหม่
+  const [lastAddedAsset, setLastAddedAsset] = useState<any>(null);
+
   const [formData, setFormData] = useState({
     asset_id: '',
     item_name: '',
@@ -31,7 +31,6 @@ export default function AdminPage() {
     responsible_person: '',
   });
 
-  // โหลดรายการพัสดุทั้งหมด
   const fetchAssets = async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -51,7 +50,6 @@ export default function AdminPage() {
     async function checkAdminAndFetch() {
       setAuthChecking(true);
       
-      // 1. เช็คว่าล็อกอินหรือยัง
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
@@ -60,7 +58,6 @@ export default function AdminPage() {
         return;
       }
 
-      // 2. เช็คว่าอีเมลนี้อยู่ในตาราง admin_users จริงไหม
       const { data: adminData, error } = await supabase
         .from('admin_users')
         .select('*')
@@ -73,7 +70,6 @@ export default function AdminPage() {
         return;
       }
 
-      // ถ้าผ่านทั้ง 2 ข้อ อนุญาตให้เข้าใช้งาน
       setIsAuthorized(true);
       setAuthChecking(false);
       fetchAssets();
@@ -82,7 +78,6 @@ export default function AdminPage() {
     checkAdminAndFetch();
   }, []);
 
-  // ฟังก์ชันเพิ่มอุปกรณ์ใหม่เข้าคลัง
   const handleAddAsset = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -96,6 +91,7 @@ export default function AdminPage() {
       alert('❌ เกิดข้อผิดพลาดในการเพิ่มอุปกรณ์: ' + error.message);
     } else {
       alert('✅ เพิ่มอุปกรณ์ใหม่สำเร็จ!');
+      setLastAddedAsset(formData);
       setFormData({
         asset_id: '',
         item_name: '',
@@ -112,7 +108,6 @@ export default function AdminPage() {
     setSubmitting(false);
   };
 
-  // ฟังก์ชันลบอุปกรณ์
   const handleDeleteAsset = async (assetId: string) => {
     if (!confirm(`คุณต้องการลบอุปกรณ์รหัส ${assetId} ใช่หรือไม่?`)) return;
 
@@ -123,14 +118,38 @@ export default function AdminPage() {
 
     if (error) {
       console.error('Error deleting asset:', error);
-      alert('❌ เกิดข้อผิดพลาดในการลบอุปกรณ์ (อาจติดสิทธิ์ RLS หรือมีประวัติใช้งานอยู่)');
+      alert('❌ เกิดข้อผิดพลาดในการลบอุปกรณ์');
     } else {
       alert('🗑️ ลบอุปกรณ์สำเร็จ!');
+      if (lastAddedAsset?.asset_id === assetId) {
+        setLastAddedAsset(null);
+      }
       fetchAssets(); 
     }
   };
 
-  // 1. กำลังเช็คสิทธิ์ (แสดงหน้าโหลด)
+  const downloadQRCode = async (assetId: string, itemName: string) => {
+    const targetUrl = `${window.location.origin}/asset/${assetId}`;
+    const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(targetUrl)}`;
+
+    try {
+      const response = await fetch(qrApiUrl);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `QRCode-${assetId}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      console.error('Failed to download QR code:', err);
+      window.open(qrApiUrl, '_blank');
+    }
+  };
+
   if (authChecking) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans text-xs text-slate-500">
@@ -139,7 +158,6 @@ export default function AdminPage() {
     );
   }
 
-  // 2. ถ้าตรวจสอบแล้ว "ไม่มีสิทธิ์" ให้แสดงหน้า UI สวยๆ แจ้งเตือนทันที
   if (!isAuthorized) {
     return (
       <main className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans text-slate-800">
@@ -150,37 +168,66 @@ export default function AdminPage() {
           <div className="space-y-2">
             <h1 className="text-xl font-extrabold text-slate-900">ไม่มีสิทธิ์เข้าใช้งาน</h1>
             <p className="text-xs text-slate-500 leading-relaxed">
-              บัญชี Google ของคุณไม่ได้รับอนุญาตให้เข้าถึงหน้าจัดการระบบผู้ดูแลระบบ (Admin Portal) กรุณาใช้บัญชีแอดมินที่ถูกต้อง
+              บัญชี Google ของคุณไม่ได้รับอนุญาตให้เข้าถึงหน้าจัดการระบบผู้ดูแลระบบ
             </p>
           </div>
-          <button
-            onClick={() => router.push('/')}
-            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold py-3 px-4 rounded-xl text-xs transition-all shadow-md"
-          >
-            ← กลับสู่หน้าหลัก
-          </button>
+
+          <div className="space-y-2 pt-2">
+            <button
+              onClick={() => router.push('/admin/approvals')}
+              className="w-full bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold py-3 px-4 rounded-xl text-xs transition-all border border-purple-200 shadow-sm"
+            >
+              📋 ตรวจสอบคำขออนุมัติ
+            </button>
+            <button
+              onClick={() => router.push('/')}
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold py-3 px-4 rounded-xl text-xs transition-all shadow-md"
+            >
+              ← กลับสู่หน้าหลัก
+            </button>
+          </div>
         </div>
       </main>
     );
   }
 
-  // 3. ถ้ามีสิทธิ์ แสดงหน้า Admin ปกติ
   return (
     <div className="min-h-screen bg-slate-100 p-6 font-sans text-slate-800">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* ส่วนหัว */}
+        {/* ส่วนหัวพร้อมกลุ่มปุ่มนำทางแอดมิน */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-200 gap-4">
           <div>
             <span className="text-xs font-semibold text-blue-600 tracking-wider uppercase">Admin Portal</span>
-            <h1 className="text-2xl font-bold text-slate-900">จัดการคลังพัสดุสโมสร</h1>
+            <h1 className="text-2xl font-bold text-slate-900">🛠️ ระบบจัดการพัสดุและผู้ดูแลระบบ</h1>
           </div>
-          <button
-            onClick={() => router.push('/')}
-            className="bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold py-2.5 px-4 rounded-xl transition-all shadow-md"
-          >
-            ← กลับไปหน้าแรก / สแกน QR Code
-          </button>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => router.push('/admin/approvals')}
+              className="bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold py-2.5 px-4 rounded-xl transition-all border border-purple-200 shadow-sm"
+            >
+              📋 ตรวจสอบคำขออนุมัติ
+            </button>
+            <button
+              onClick={() => router.push('/admin/maintenance')}
+              className="bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold py-2.5 px-4 rounded-xl transition-all border border-rose-200 shadow-sm"
+            >
+              🛠️ จัดการระบบแจ้งซ่อม
+            </button>
+            <button
+              onClick={() => router.push('/admin/history')}
+              className="bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-semibold py-2.5 px-4 rounded-xl transition-all border border-blue-200 shadow-sm"
+            >
+              📊 ดูประวัติการยืม-คืน
+            </button>
+            <button
+              onClick={() => router.push('/')}
+              className="bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold py-2.5 px-4 rounded-xl transition-all shadow-md"
+            >
+              ← กลับไปหน้าแรก
+            </button>
+          </div>
         </div>
 
         {/* ฟอร์มเพิ่มอุปกรณ์ใหม่ */}
@@ -293,6 +340,38 @@ export default function AdminPage() {
           </form>
         </div>
 
+        {/* 🖨️ กล่องแสดง QR Code ของอุปกรณ์ล่าสุดที่เพิ่งเพิ่ม */}
+        {lastAddedAsset && (
+          <div className="bg-gradient-to-r from-blue-900 to-slate-900 text-white p-6 rounded-3xl shadow-lg flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="space-y-2 text-center md:text-left">
+              <span className="text-[10px] font-bold px-2.5 py-1 bg-blue-500/30 text-blue-300 rounded-full border border-blue-400/30 uppercase tracking-wider">
+                ✨ สร้าง QR Code สำเร็จแล้ว
+              </span>
+              <h3 className="text-lg font-bold">{lastAddedAsset.item_name}</h3>
+              <p className="text-xs text-slate-300 font-mono">รหัส: {lastAddedAsset.asset_id}</p>
+              <p className="text-xs text-slate-400 max-w-md">
+                คุณสามารถดาวน์โหลดรูป QR Code นี้ไปปริ้นท์เพื่อนำไปติดไว้ที่ตัวอุปกรณ์สำหรับให้นิสิตสแกนยืม-คืนได้ทันที
+              </p>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl shadow-md flex flex-col items-center space-y-3 shrink-0">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
+                  typeof window !== 'undefined' ? `${window.location.origin}/asset/${lastAddedAsset.asset_id}` : ''
+                )}`}
+                alt="QR Code"
+                className="w-32 h-32 object-contain"
+              />
+              <button
+                onClick={() => downloadQRCode(lastAddedAsset.asset_id, lastAddedAsset.item_name)}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-xl text-xs transition-all shadow"
+              >
+                📥 ดาวน์โหลด QR Code
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ตารางแสดงรายการอุปกรณ์ทั้งหมด */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
           <h2 className="text-lg font-bold text-slate-900 mb-4">📦 รายการอุปกรณ์ทั้งหมดในคลัง ({assets.length})</h2>
@@ -326,7 +405,13 @@ export default function AdminPage() {
                           {item.condition || 'GOOD'}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-center">
+                      <td className="py-3 px-4 text-center space-x-2">
+                        <button
+                          onClick={() => downloadQRCode(item.asset_id, item.item_name)}
+                          className="bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold py-1.5 px-3 rounded-lg text-[11px] transition-all"
+                        >
+                          QR Code
+                        </button>
                         <button
                           onClick={() => handleDeleteAsset(item.asset_id)}
                           className="bg-red-50 hover:bg-red-100 text-red-600 font-semibold py-1.5 px-3 rounded-lg text-[11px] transition-all"
