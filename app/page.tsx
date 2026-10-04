@@ -97,7 +97,7 @@ export default function HomePage() {
     };
   }, [showScanner]);
 
-  // เริ่มต้นสแกนด้วยกล้องที่เลือก
+  // เริ่มต้นสแกนด้วยกล้องที่เลือก (ซ่อนกรอบสี่เหลี่ยมภายในของ html5-qrcode ออกเพื่อไม่ให้ซ้อนกัน)
   useEffect(() => {
     if (!showScanner || !selectedCamera) return;
 
@@ -108,7 +108,7 @@ export default function HomePage() {
       selectedCamera,
       {
         fps: 10,
-        qrbox: { width: 220, height: 220 },
+        qrbox: 0, // ปิดการแสดงกรอบดีפולต์ของไลบรารี
       },
       (decodedText) => {
         html5QrCode.stop().then(() => {
@@ -361,7 +361,7 @@ export default function HomePage() {
 
       </div>
 
-      {/* 📷 Modal สแกน QR Code ดีไซน์คลีนๆ ไร้กรอบเขียวซ้อน */}
+      {/* 📷 Modal สแกน QR Code เหลือกรอบนอกอันเดียวสะอาดตา */}
       {showScanner && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="max-w-md w-full bg-white p-6 rounded-[2.5rem] shadow-2xl border border-slate-200 text-center space-y-4">
@@ -380,7 +380,7 @@ export default function HomePage() {
 
             <p className="text-[11px] text-slate-400">หันกล้องไปที่ QR Code หรืออัปโหลดรูปภาพเพื่อดูข้อมูล</p>
 
-            {/* กล้องสแกนพร้อมกรอบเล็งเป้าสีขาวสะอาดตา */}
+            {/* กล้องสแกนพร้อมกรอบเล็งเป้าขาวสะอาดตาอันเดียว */}
             <div className="relative w-full h-64 bg-slate-900 rounded-3xl overflow-hidden shadow-inner flex items-center justify-center border-4 border-slate-100">
               <div id="reader-view-home" className="w-full h-full object-cover" />
               
