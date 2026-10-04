@@ -26,6 +26,9 @@ export default function AdminApprovalsPage() {
 
   const [viewSlipLog, setViewSlipLog] = useState<any>(null);
 
+  // ตัวกรองรายงาน
+  const [historySearch, setHistorySearch] = useState('');
+
   const fetchLogs = async () => {
     setLoading(true);
     const { data } = await supabase
@@ -82,6 +85,7 @@ export default function AdminApprovalsPage() {
         status: 'RETURNED',
         request_status: 'RETURNED',
         admin_return_signature: sigUrl,
+        returned_at: new Date().toISOString(), // 🕒 บันทึกวันเวลาที่แอดมินเซ็นรับคืนพัสดุ
       };
     }
 
@@ -106,7 +110,14 @@ export default function AdminApprovalsPage() {
 
   const pendingList = logs.filter(l => l.request_status === 'PENDING');
   const returnReviewList = logs.filter(l => l.status === 'RETURNED' && !l.admin_return_signature);
-  const historyList = logs.filter(l => l.request_status !== 'PENDING');
+  const activeBorrowedList = logs.filter(l => l.status === 'BORROWED' || l.status === 'APPROVED');
+  
+  // รายการประวัติทั้งหมดที่ตรงกับคำค้นหา
+  const filteredHistoryList = logs.filter(l => 
+    l.user_name?.toLowerCase().includes(historySearch.toLowerCase()) ||
+    l.asset_id?.toLowerCase().includes(historySearch.toLowerCase()) ||
+    l.assets?.item_name?.toLowerCase().includes(historySearch.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-slate-100 p-6 font-sans text-slate-800">
@@ -168,12 +179,33 @@ export default function AdminApprovalsPage() {
       {/* หน้าแดชบอร์ดหลักของแอดมิน */}
       <div className="no-print max-w-6xl mx-auto space-y-6">
         
+        {/* Header */}
         <div className="flex justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
           <div>
             <span className="text-xs font-semibold text-purple-600 uppercase">Admin Portal</span>
-            <h1 className="text-2xl font-bold text-slate-900">📋 ตรวจสอบใบยืม-คืน และเอกสาร A4</h1>
+            <h1 className="text-2xl font-bold text-slate-900">📊 รายงานสถิติ & สัญญาพิมพ์ A4</h1>
           </div>
-          <button onClick={() => router.push('/admin')} className="bg-slate-800 text-white text-xs py-2.5 px-4 rounded-xl">← กลับหน้าจัดการคลัง</button>
+          <button onClick={() => router.push('/')} className="bg-slate-800 text-white text-xs py-2.5 px-4 rounded-xl font-semibold">← กลับหน้าหลัก</button>
+        </div>
+
+        {/* 📊 รายงานสถิติภาพรวม (Stat Cards) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-1">
+            <p className="text-xs text-slate-400 font-semibold uppercase">คำขอยืมรออนุมัติ</p>
+            <p className="text-2xl font-black text-indigo-600">{pendingList.length} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
+          </div>
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-1">
+            <p className="text-xs text-slate-400 font-semibold uppercase">ส่งคืนรอตรวจรับ</p>
+            <p className="text-2xl font-black text-purple-600">{returnReviewList.length} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
+          </div>
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-1">
+            <p className="text-xs text-slate-400 font-semibold uppercase">พัสดุอยู่ระหว่างถูกยืม</p>
+            <p className="text-2xl font-black text-amber-600">{activeBorrowedList.length} <span className="text-xs font-normal text-slate-500">รายการ</span></p>
+          </div>
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-1">
+            <p className="text-xs text-slate-400 font-semibold uppercase">ทำรายการสะสมทั้งหมด</p>
+            <p className="text-2xl font-black text-emerald-600">{logs.length} <span className="text-xs font-normal text-slate-500">สัญญา</span></p>
+          </div>
         </div>
 
         {/* 1. รายการรออนุมัติใบยืม */}
@@ -191,7 +223,7 @@ export default function AdminApprovalsPage() {
                     <p className="text-rose-600 font-bold">ค่าเสียหาย: ฿{Number(log.assets?.price || 1500).toLocaleString()} บาท</p>
                     <p className="italic text-slate-600">วัตถุประสงค์: "{log.purpose}"</p>
                   </div>
-                  <button onClick={() => { setSelectedLog(log); setAdminSigMode('APPROVE'); setAdminSigModal(true); }} className="bg-emerald-600 text-white py-2 px-4 rounded-xl font-semibold shadow">✓ ตรวจสอบและเซ็นอนุมัติยืม</button>
+                  <button onClick={() => { setSelectedLog(log); setAdminSigMode('APPROVE'); setAdminSigModal(true); }} className="bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded-xl font-semibold shadow transition">✓ ตรวจสอบและเซ็นอนุมัติยืม</button>
                 </div>
               ))}
             </div>
@@ -211,9 +243,13 @@ export default function AdminApprovalsPage() {
                     <div>
                       <p className="font-bold text-slate-900 text-sm">ผู้คืน: {log.user_name}</p>
                       <p className="font-mono text-blue-600">พัสดุ: {log.asset_id} ({log.assets?.item_name})</p>
+                      {/* 🕒 แสดงเวลาส่งคืน */}
+                      <p className="text-slate-500 font-mono text-[11px] mt-0.5">
+                        🕒 เวลาส่งคืน: {log.returned_at ? new Date(log.returned_at).toLocaleString('th-TH') : new Date(log.borrowed_at).toLocaleString('th-TH')}
+                      </p>
                     </div>
 
-                    {/* 🖼️ Preview รูปภาพพัสดุด้านหน้า และด้านหลัง */}
+                    {/* Preview รูปถ่าย */}
                     <div className="flex gap-3 pt-1">
                       <div className="text-center space-y-1">
                         <span className="text-[10px] text-slate-500 font-semibold block">ด้านหน้า</span>
@@ -239,34 +275,57 @@ export default function AdminApprovalsPage() {
                     </div>
                   </div>
 
-                  <button onClick={() => { setSelectedLog(log); setAdminSigMode('RETURN'); setAdminSigModal(true); }} className="bg-purple-600 hover:bg-purple-700 text-white py-3 px-5 rounded-xl font-semibold shadow whitespace-nowrap">✓ เซ็นรับทราบการคืนพัสดุ</button>
+                  <button onClick={() => { setSelectedLog(log); setAdminSigMode('RETURN'); setAdminSigModal(true); }} className="bg-purple-600 hover:bg-purple-700 text-white py-3 px-5 rounded-xl font-semibold shadow whitespace-nowrap transition">✓ เซ็นรับทราบการคืนพัสดุ</button>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* 3. ประวัติเอกสารทั้งหมด */}
+        {/* 3. ประวัติและรายงานสัญญา A4 ทั้งหมด */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
-          <h2 className="text-lg font-bold text-slate-900">📑 ประวัติเอกสารสัญญา A4 ทั้งหมด</h2>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+            <h2 className="text-lg font-bold text-slate-900">📑 รายงานประวัติและเอกสารสัญญา A4</h2>
+            <input 
+              type="text" 
+              placeholder="🔍 ค้นหาชื่อผู้ยืม, รหัสพัสดุ..." 
+              value={historySearch} 
+              onChange={(e) => setHistorySearch(e.target.value)}
+              className="p-2.5 rounded-xl border text-xs w-full md:w-64"
+            />
+          </div>
+
           <div className="overflow-x-auto text-xs">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b text-slate-400 uppercase">
                   <th className="py-3 px-3">ผู้ยืม</th>
                   <th className="py-3 px-3">อุปกรณ์</th>
+                  <th className="py-3 px-3">วันที่ยืม</th>
+                  <th className="py-3 px-3">วันที่ส่งคืน</th>
                   <th className="py-3 px-3">สถานะ</th>
                   <th className="py-3 px-3 text-center">เอกสารสัญญา A4 (2 หน้า)</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {historyList.map((log) => (
+                {filteredHistoryList.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-50">
                     <td className="py-3 px-3 font-bold">{log.user_name}</td>
                     <td className="py-3 px-3 font-mono">{log.asset_id}</td>
-                    <td className="py-3 px-3"><span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800">{log.request_status}</span></td>
+                    <td className="py-3 px-3">{new Date(log.borrowed_at).toLocaleDateString('th-TH')}</td>
+                    <td className="py-3 px-3 font-mono text-[11px]">
+                      {log.returned_at ? new Date(log.returned_at).toLocaleDateString('th-TH') : '-'}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`px-2.5 py-1 rounded-full font-bold text-[10px] ${
+                        log.status === 'RETURNED' ? 'bg-emerald-100 text-emerald-800' :
+                        log.status === 'BORROWED' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {log.status}
+                      </span>
+                    </td>
                     <td className="py-3 px-3 text-center">
-                      <button onClick={() => setViewSlipLog(log)} className="bg-blue-50 text-blue-600 font-semibold py-1.5 px-3 rounded-lg hover:bg-blue-100">📄 เปิดดูเอกสาร A4 (2 หน้า)</button>
+                      <button onClick={() => setViewSlipLog(log)} className="bg-blue-50 text-blue-600 font-semibold py-1.5 px-3 rounded-lg hover:bg-blue-100 transition">📄 พิมพ์สัญญา A4 (2 หน้า)</button>
                     </td>
                   </tr>
                 ))}
@@ -296,7 +355,7 @@ export default function AdminApprovalsPage() {
         </div>
       )}
 
-      {/* 📄 Modal แสดงเอกสารสัญญา A4 2 หน้า */}
+      {/* 📄 Modal แสดงและสั่งพิมพ์เอกสารสัญญา A4 (2 หน้า) */}
       {viewSlipLog && (
         <div className="print-modal-backdrop fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-start p-6 z-50 overflow-y-auto no-scrollbar">
           
@@ -307,29 +366,29 @@ export default function AdminApprovalsPage() {
 
           <div className="print-document-container w-full max-w-[210mm] flex flex-col items-center space-y-8 print:space-y-0">
             
-            {/* หน้ากระดาษที่ 1: ใบยืมครุภัณฑ์ */}
+            {/* หน้าที่ 1: ใบยืมครุภัณฑ์ */}
             <div className="a4-page a4-page-break bg-white w-[210mm] min-h-[297mm] p-[15mm] shadow-2xl border border-slate-200 font-serif text-slate-900 relative flex flex-col justify-between box-border">
               <div className="space-y-6">
                 <div className="text-center space-y-1 border-b pb-4">
-                  <h2 className="text-xl font-bold tracking-wide">ใบยืมครุภัณฑ์ / วัสดุคงทน (หน้าที่ 1)</h2>
-                  <p className="text-xs text-slate-600 font-sans">สโมสรนักศึกษา ภาควิชาวิทยาการคอมพิวเตอร์</p>
+                  <h2 className="text-xl font-bold tracking-wide">ใบยืมครุภัณฑ์ / วัสดุคงทน </h2>
+                  <p className="text-xs text-slate-600 font-sans">งานประธานสาขา ภาควิชาวิทยาการคอมพิวเตอร์</p>
                 </div>
 
                 <div className="text-right text-xs space-y-0.5 font-sans">
-                  <p>เขียนที่ สโมสรนักศึกษา ภาควิชาวิทยาการคอมพิวเตอร์</p>
+                  <p>เขียนที่ ภาควิชาวิทยาการคอมพิวเตอร์</p>
                   <p>วันที่ {new Date(viewSlipLog.borrowed_at).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
                 </div>
 
                 <div className="text-xs space-y-3 leading-relaxed">
-                  <p><b>เรื่อง:</b> ขอขอยืมพัสดุและครุภัณฑ์</p>
-                  <p><b>เรียน:</b> ผู้ดูแลระบบ / อาจารย์ที่ปรึกษาสโมสรนักศึกษา</p>
+                  <p><b>เรื่อง:</b> ขอยืมพัสดุและครุภัณฑ์</p>
+                  <p><b>เรียน:</b> ประธานสาขาทุกชั้นปี / รองประธานสาขาทุกชั้นปี / คณะกรรมการชั้นปีฝ่ายพัสดุทุกชั้นปี</p>
                   <p className="pt-2">
                     ข้าพเจ้า (<span className="underline font-sans">{viewSlipLog.user_name}</span>) อีเมล <span className="underline font-sans">{viewSlipLog.user_email}</span> มีความประสงค์ขอยืมอุปกรณ์ 
                     <b> {viewSlipLog.assets?.item_name}</b> (รหัสพัสดุ: <span className="font-mono font-bold">{viewSlipLog.asset_id}</span>) 
                     เพื่อนำไปใช้ในงาน / กิจกรรม: <span className="italic underline font-sans">"{viewSlipLog.purpose}"</span>
                   </p>
                   <p className="pt-2">
-                    โดยจะนำส่งคืนในสภาพเรียบร้อย หากเกิดกรณีชำรุดเสียหาย ข้าพเจ้ายินดีชดใช้ตามมูลค่าความเสียหายที่เกิดขึ้นทันทีตามที่ประเมินเป็นจำนวนเงิน <b className="text-rose-600 font-sans">฿{Number(viewSlipLog.assets?.price || 1500).toLocaleString()} บาท</b> (ข้าพเจ้าได้ตรวจสอบและกดยอมรับเงื่อนไขความรับผิดชอบผ่านระบบอิเล็กทรอนิกส์แล้ว)
+                      โดยจะนำส่งคืนในสภาพเรียบร้อย หากเกิดกรณีชำรุดเสียหาย ข้าพเจ้ายินดีชดใช้ตามมูลค่าความเสียหายที่เกิดขึ้นทันทีตามที่ประเมินเป็นจำนวนเงิน <b className="text-rose-600 font-sans">฿{Number(viewSlipLog.assets?.price || 1500).toLocaleString()} บาท</b> (ข้าพเจ้าได้ตรวจสอบและกดยอมรับเงื่อนไขความรับผิดชอบผ่านระบบอิเล็กทรอนิกส์แล้ว)
                   </p>
                 </div>
 
@@ -361,17 +420,22 @@ export default function AdminApprovalsPage() {
               </div>
             </div>
 
-            {/* หน้ากระดาษที่ 2: ใบส่งคืนครุภัณฑ์ */}
+            {/* หน้าที่ 2: ใบส่งคืนครุภัณฑ์ */}
             <div className="a4-page bg-white w-[210mm] min-h-[297mm] p-[15mm] shadow-2xl border border-slate-200 font-serif text-slate-900 relative flex flex-col justify-between box-border">
               <div className="space-y-6">
                 <div className="text-center space-y-1 border-b pb-4">
-                  <h2 className="text-xl font-bold tracking-wide">ใบส่งคืนครุภัณฑ์และตรวจรับพัสดุ (หน้าที่ 2)</h2>
-                  <p className="text-xs text-slate-600 font-sans">สโมสรนักศึกษา ภาควิชาวิทยาการคอมพิวเตอร์</p>
+                  <h2 className="text-xl font-bold tracking-wide">ใบส่งคืนครุภัณฑ์และตรวจรับพัสดุ</h2>
+                  <p className="text-xs text-slate-600 font-sans">งานประธานสาขา ภาควิชาวิทยาการคอมพิวเตอร์</p>
+                </div>
+
+                {/* 🕒 แสดงวันและเวลาส่งคืนในเอกสาร A4 หน้า 2 */}
+                <div className="text-right text-xs space-y-0.5 font-sans bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <p><b>วันเวลาที่ส่งคืน:</b> {viewSlipLog.returned_at ? new Date(viewSlipLog.returned_at).toLocaleString('th-TH') : 'ทำรายการคืนเรียบร้อย'}</p>
                 </div>
 
                 <div className="text-xs space-y-3 leading-relaxed">
                   <p><b>เรื่อง:</b> ส่งคืนพัสดุและครุภัณฑ์</p>
-                  <p><b>เรียน:</b> ผู้ดูแลระบบ / อาจารย์ที่ปรึกษาสโมสรนักศึกษา</p>
+                  <p><b>เรียน:</b> ประธานสาขาทุกชั้นปี / รองประธานสาขาทุกชั้นปี / คณะกรรมการชั้นปีฝ่ายพัสดุทุกชั้นปี </p>
                   <p className="pt-2">
                     ข้าพเจ้า (<span className="underline font-sans">{viewSlipLog.user_name}</span>) ได้นำส่งคืนอุปกรณ์ 
                     <b> {viewSlipLog.assets?.item_name}</b> (รหัสพัสดุ: <span className="font-mono font-bold">{viewSlipLog.asset_id}</span>) 
@@ -411,7 +475,7 @@ export default function AdminApprovalsPage() {
                         <img src={viewSlipLog.admin_return_signature} alt="Admin Return Sign" className="max-h-full object-contain" />
                       ) : <span className="text-slate-400 text-[10px]">(รอรับคืน)</span>}
                     </div>
-                    <p>(ลงชื่อ).......................................................ผู้รับคืน (แอดมิน)</p>
+                    <p>(ลงชื่อ).......................................................ผู้รับคืน </p>
                     <p>(.......................................................)</p>
                   </div>
                 </div>
