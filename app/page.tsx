@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,7 +24,6 @@ export default function HomePage() {
 
   // Modal สแกน QR Code
   const [showScanner, setShowScanner] = useState(false);
-  const [cameraError, setCameraError] = useState('');
 
   useEffect(() => {
     // 🧹 ล้าง Hash URL (#access_token=...) ที่ติดมาจาก Google OAuth ออกทันที
@@ -73,49 +72,38 @@ export default function HomePage() {
     };
   }, []);
 
-  // 📷 ระบบเปิดกล้องสแกนอัตโนมัติไร้ปุ่มคั่น (Direct Auto-start Scanner)
+  // 📷 กล้องสแกน QR Code พร้อมกรอบ UI สวยงาม + เลือกใช้กล้องหลังอัตโนมัติ
   useEffect(() => {
     if (!showScanner) return;
-    setCameraError('');
 
-    let html5QrcodeScanner: Html5Qrcode | null = null;
-
-    const startCamera = async () => {
-      try {
-        html5QrcodeScanner = new Html5Qrcode('qr-reader-container');
-        await html5QrcodeScanner.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 220, height: 220 } },
-          (decodedText) => {
-            if (html5QrcodeScanner) {
-              html5QrcodeScanner.stop().then(() => {
-                setShowScanner(false);
-                if (decodedText.startsWith('http')) {
-                  window.location.href = decodedText;
-                } else {
-                  router.push(`/asset/${decodedText}`);
-                }
-              }).catch(() => {});
-            }
-          },
-          () => {}
-        );
-      } catch (err: any) {
-        console.error('Camera Access Error:', err);
-        setCameraError('ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตการใช้งานกล้องในเบราว์เซอร์');
-      }
-    };
-
-    // Delay เล็กน้อยให้ DOM เมาท์ตัว Element
     const timer = setTimeout(() => {
-      startCamera();
+      const scanner = new Html5QrcodeScanner(
+        'qr-reader',
+        { 
+          fps: 10, 
+          qrbox: { width: 220, height: 220 },
+          videoConstraints: { facingMode: { exact: 'environment' } } // บังคับสลับใช้กล้องหลัง
+        },
+        false
+      );
+
+      scanner.render(
+        (decodedText) => {
+          scanner.clear();
+          setShowScanner(false);
+          
+          if (decodedText.startsWith('http')) {
+            window.location.href = decodedText;
+          } else {
+            router.push(`/asset/${decodedText}`);
+          }
+        },
+        () => {}
+      );
     }, 100);
 
     return () => {
       clearTimeout(timer);
-      if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
-        html5QrcodeScanner.stop().catch(() => {});
-      }
     };
   }, [showScanner, router]);
 
@@ -179,12 +167,38 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-slate-100 p-4 md:p-8 font-sans text-slate-800">
       
-      {/* 🎨 CSS ปรับกล้องวิดีโอให้แสดงผลแบบไม่มีขอบส่วนเกิน */}
+      {/* 🎨 CSS ครอบดีไซน์ HTML5 Scanner ให้มีกรอบเล็งสแกนสวยๆ + ปรับปุ่มให้โค้งมน */}
       <style jsx global>{`
-        #qr-reader-container video {
+        #qr-reader {
+          border: none !important;
+        }
+        #qr-reader__scan_region {
+          background: #0f172a !important;
+          border-radius: 20px !important;
+          overflow: hidden !important;
+        }
+        #qr-reader__scan_region video {
           border-radius: 20px !important;
           object-fit: cover !important;
-          width: 100% !important;
+        }
+        #qr-reader__dashboard_section_csr button {
+          background-color: #2563eb !important;
+          color: white !important;
+          border: none !important;
+          padding: 10px 20px !important;
+          border-radius: 14px !important;
+          font-size: 12px !important;
+          font-weight: 600 !important;
+          cursor: pointer !important;
+          margin: 8px 0 !important;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+        }
+        #qr-reader__dashboard_section_csr button:hover {
+          background-color: #1d4ed8 !important;
+        }
+        #qr-reader__status_span {
+          font-size: 11px !important;
+          color: #64748b !important;
         }
       `}</style>
 
@@ -309,7 +323,7 @@ export default function HomePage() {
                       
                       <div className="text-[11px] text-slate-500 space-y-0.5">
                         <p>📍 สถานที่: {item.location || '-'}</p>
-                        <p>🏷️ หมวดหมู่: {item.category || '-'}</p>
+                        <p>🏷️️ หมวดหมู่: {item.category || '-'}</p>
                       </div>
                     </div>
 
@@ -328,7 +342,7 @@ export default function HomePage() {
 
       </div>
 
-      {/* 📷 Modal สแกน QR Code ดีไซน์ใหม่ แบบเปิดกล้องทันที */}
+      {/* Modal สแกน QR Code พร้อมกรอบเล็งสวยงาม */}
       {showScanner && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center space-y-4 border border-slate-100">
@@ -344,14 +358,7 @@ export default function HomePage() {
               </button>
             </div>
 
-            {/* พื้นที่แสดงกล้องสแกน */}
-            <div className="relative min-h-[250px] bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center">
-              {cameraError ? (
-                <div className="p-4 text-xs text-rose-400">{cameraError}</div>
-              ) : (
-                <div id="qr-reader-container" className="w-full h-full" />
-              )}
-            </div>
+            <div id="qr-reader" className="overflow-hidden rounded-2xl bg-slate-900" />
 
             <p className="text-[11px] text-slate-400">ส่องกล้องไปที่ QR Code เพื่อเปิดหน้าพัสดุโดยอัตโนมัติ</p>
           </div>
